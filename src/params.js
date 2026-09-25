@@ -1,7 +1,7 @@
 // Every tweakable variable, its range, and the curated presets.
 
 export const COUNT_STEPS = [
-  1000, 2000, 5000, 10000, 20000, 50000, 100000, 150000, 200000, 300000, 500000, 750000, 1000000, 1500000, 2000000,
+  1000, 2000, 5000, 10000, 20000, 50000, 100000, 150000, 200000, 300000, 400000, 500000, 750000, 1000000, 1500000, 2000000,
 ];
 
 // Colours are sRGB stops, low → high. `lo` is where "color by shape" starts on the ramp.
@@ -132,7 +132,7 @@ export const PRESETS = {
   comets: {
     label: 'Comets',
     params: {
-      count: 60000, size: 1.6, attractors: 1, mass: 1.5, swirl: 0, drag: 0, horizon: 0.035, softening: 0.05,
+      count: 50000, size: 1.6, attractors: 1, mass: 1.5, swirl: 0, drag: 0, horizon: 0.035, softening: 0.05,
       core: 'star', turbulence: 0, shape: 'comet', shapes: 7, layout: 'circle', spacing: 1.25, shapeSize: 0.1,
       scatter: 0.1, orbit: 0.35, palette: 'glacier', colorBy: 'speed', whiteHot: 0.7, trails: 0.965, halo: 1.4,
     },
@@ -150,7 +150,7 @@ export const PRESETS = {
     label: 'Supernova',
     cycle: true,
     params: {
-      count: 600000, size: 0.9, attractors: 1, mass: 1, swirl: 0.9, drag: 0.03, horizon: 0.05, softening: 0.03,
+      count: 500000, size: 0.9, attractors: 1, mass: 1, swirl: 0.9, drag: 0.03, horizon: 0.05, softening: 0.03,
       absorb: 'vanish', core: 'void', shape: 'cloud', shapes: 1, shapeSize: 0.9, scatter: 0, orbit: 0.6,
       palette: 'solar', colorBy: 'speed', whiteHot: 0.6, trails: 0.9, halo: 1.5, burst: 2.2, turbulence: 0.08,
     },
