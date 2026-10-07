@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Accretion</title>
+<style>
+:root{--bg:#000;--fg:#c9b8a6;box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ui{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;justify-content:center;font:13px/1 Georgia,serif;color:var(--fg)}
+button{background:none;border:1px solid #5a4a3c;color:var(--fg);padding:7px 12px;font:inherit;border-radius:2px}
+button:focus-visible{outline:2px solid #e8a060}
+
+#tweaks{position:fixed;right:16px;top:16px;width:224px;max-height:65vh;overflow:auto;padding:14px;background:#101018df;border:1px solid #ffffff24;border-radius:12px;color:#ded7ce;font:12px/1.5 system-ui;touch-action:auto}
+#tweaks summary{cursor:pointer;font-weight:600}#tweaks p{color:#9c96a6}#tweaks label{display:block;margin:12px 0}#tweaks output{float:right;font-variant-numeric:tabular-nums}#tweaks input{display:block;width:100%;accent-color:#e8bc8f}#tweaks button{font:inherit}
+@media(max-width:640px){#tweaks{top:12px;right:12px;width:180px}#cap{top:68px;left:16px;right:16px}#cap h1{font-size:22px;letter-spacing:.1em}#cap p{max-width:40ch}#ui{background:#0009}}
+</style></head><body>
+<canvas></canvas>
+<div id="ui"><button data-p="0.10,0">Edge-on</button><button data-p="0.32,-0.45">Tilted</button><button data-p="1.2,0">Top</button></div>
+<script>addEventListener("error",e=>{const box=document.createElement("p");box.style="position:fixed;inset:30%;color:#fff;background:#211;padding:20px;z-index:10";box.textContent="Scene could not start: "+e.message;document.body.append(box);});</script>
+<script id="scene-settings" type="application/json">{}</script>
+<script>
+const FS=`precision highp float;
+uniform vec2 R;uniform float T;uniform vec2 C;uniform float Exposure;uniform float Zoom;uniform float StarGain;
+float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float vn(vec2 p,float P){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+ float x0=mod(i.x,P),x1=mod(i.x+1.,P);
+ return mix(mix(h(vec2(x0,i.y)),h(vec2(x1,i.y)),f.x),mix(h(vec2(x0,i.y+1.)),h(vec2(x1,i.y+1.)),f.x),f.y);}
+float fbm(vec2 p,float P){float s=0.,a=.5;for(int i=0;i<5;i++){s+=a*vn(p,P);p*=2.;P*=2.;a*=.5;}return s;}
+float layer(float th,float r,float ph,float o){return fbm(vec2(fract((th-ph)/6.2832)*20.,r*5.+o),20.);}
+vec4 disk(vec3 q,float r,vec3 rd){
+ float th=atan(q.z,q.x),w=2.5*pow(r,-1.5),c=T*.1,f1=fract(c),f2=fract(c+.5);
+ float n=mix(layer(th,r,w*f2*10.,7.),layer(th,r,w*f1*10.,0.),1.-abs(2.*f1-1.)); // flow-map crossfade, no shear blowup
+ vec3 vel=vec3(-q.z,0.,q.x)/r*sqrt(.5/(r-1.));
+ float g=sqrt(1.-dot(vel,vel))/(1.+dot(vel,rd))*sqrt(1.-1./r);   // doppler + grav redshift
+ float beam=mix(1.,pow(g,3.),.7);
+ float env=smoothstep(2.6,3.4,r)*smoothstep(14.,6.,r);
+ float d=smoothstep(.3,.85,n);
+ float I=env*(.15+1.6*d*d)*pow(3./r,1.6)*beam;
+ vec3 col=mix(vec3(.9,.22,.03),vec3(1.,.8,.55),clamp(I*.8,0.,1.))*I*2.;
+ return vec4(col,clamp(env*(.3+.9*d),0.,1.)*.85);}
+void main(){
+ vec2 uv=(gl_FragCoord.xy-.5*R)/min(R.x,R.y);
+ float cr=cos(C.y),sr=sin(C.y);uv=mat2(cr,-sr,sr,cr)*uv;
+ vec3 ro=22.*vec3(0.,sin(C.x),-cos(C.x));
+ vec3 f=normalize(-ro),rt=normalize(cross(vec3(0,1,0),f)),up=cross(f,rt);
+ vec3 p=ro,v=normalize(f+.85/Zoom*(uv.x*rt+uv.y*up)),col=vec3(0.);float a=1.;
+ vec3 L=cross(p,v);float h2=dot(L,L);
+ for(int i=0;i<220;i++){
+  float r=length(p);if(r<1.02){a=0.;break;}
+  float dt=.07*r;
+  v+=-1.5*h2*p/pow(r,5.)*dt;                 // Schwarzschild photon bending, Rs=1
+  vec3 pn=p+v*dt;
+  if(p.y*pn.y<0.){vec3 q=mix(p,pn,p.y/(p.y-pn.y));float rr=length(q.xz);
+   if(rr>2.5&&rr<14.){vec4 d=disk(q,rr,normalize(v));col+=a*d.rgb;a*=1.-d.a;}}
+  p=pn;if(r>40.)break;}
+ vec3 dir=normalize(v);vec2 sp=floor(vec2(atan(dir.z,dir.x),asin(dir.y))*120.);
+ col+=a*step(.997,h(sp))*h(sp+1.)*.7*StarGain;
+ col=pow(1.-exp(-col*1.4*Exposure),vec3(.85));
+ gl_FragColor=vec4(col,1.);}`;
+const settings={speed:1,exposure:1,zoom:1,stars:1,resolution:.6,paused:matchMedia('(prefers-reduced-motion: reduce)').matches,...JSON.parse(document.getElementById('scene-settings').textContent)};
+let active=true,elapsed=settings.time??0,previous=null;
+addEventListener('message',e=>{if(e.source===parent&&e.data?.type==='lab-active'){active=e.data.active;previous=null;}});
+const c=document.querySelector('canvas'),g=c.getContext('webgl');
+if(!g)throw new Error('WebGL is unavailable. Please enable hardware acceleration.');
+const sh=(t,s)=>{const o=g.createShader(t);g.shaderSource(o,s);g.compileShader(o);if(!g.getShaderParameter(o,g.COMPILE_STATUS))throw g.getShaderInfoLog(o);return o};
+const pr=g.createProgram();g.attachShader(pr,sh(g.VERTEX_SHADER,'attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}'));
+g.attachShader(pr,sh(g.FRAGMENT_SHADER,FS));g.bindAttribLocation(pr,0,'p');g.linkProgram(pr);if(!g.getProgramParameter(pr,g.LINK_STATUS))throw new Error(g.getProgramInfoLog(pr));g.useProgram(pr);
+g.bindBuffer(g.ARRAY_BUFFER,g.createBuffer());g.bufferData(g.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),g.STATIC_DRAW);
+g.enableVertexAttribArray(0);g.vertexAttribPointer(0,2,g.FLOAT,false,0,0);
+const U=n=>g.getUniformLocation(pr,n),uR=U('R'),uT=U('T'),uC=U('C'),uExposure=U('Exposure'),uZoom=U('Zoom'),uStars=U('StarGain');
+let SCALE=settings.resolution*Math.min(devicePixelRatio,2); // render scale: main perf knob
+let cam=[0.10,0],tgt=settings.camera?.slice()??[0.10,0],drag=null;
+function rs(){c.width=innerWidth*SCALE|0;c.height=innerHeight*SCALE|0;g.viewport(0,0,c.width,c.height);}
+addEventListener('resize',rs);rs();
+c.onpointerdown=e=>drag=[e.clientX,e.clientY];
+addEventListener('pointerup',()=>drag=null);
+addEventListener('pointermove',e=>{if(!drag)return;tgt[0]=Math.max(-1.4,Math.min(1.4,tgt[0]+(e.clientY-drag[1])*.004));tgt[1]+=(e.clientX-drag[0])*.004;drag=[e.clientX,e.clientY];});
+document.querySelectorAll('button').forEach(b=>b.onclick=()=>tgt=b.dataset.p.split(',').map(Number));
+function frame(t){requestAnimationFrame(frame);if(!active||document.hidden){previous=null;return;}
+ const dt=previous===null?0:Math.min((t-previous)/1000,.05);previous=t;if(!settings.paused)elapsed+=dt*settings.speed;
+ cam=cam.map((x,i)=>x+(tgt[i]-x)*.08);
+ g.uniform2f(uR,c.width,c.height);g.uniform1f(uT,elapsed);g.uniform2f(uC,cam[0],cam[1]);
+ g.uniform1f(uExposure,settings.exposure);g.uniform1f(uZoom,settings.zoom);g.uniform1f(uStars,settings.stars);
+ g.drawArrays(g.TRIANGLES,0,3);}
+requestAnimationFrame(frame);
+
+const controls=document.createElement('details');controls.id='tweaks';controls.open=innerWidth>640;
+controls.innerHTML='<summary>Scene controls</summary><p>Drag the scene to orbit the view.</p>';
+for(const [key,label,min,max,step] of [['speed','Time speed',0,3,.05],['exposure','Exposure',.2,3,.05],['zoom','Zoom',.5,2.5,.05],['stars','Starlight',0,3,.05],['resolution','Render quality',.2,1,.05]]){
+ const row=document.createElement('label');row.textContent=label;
+ const out=document.createElement('output');out.textContent=Number(settings[key]).toFixed(2);
+ const input=document.createElement('input');input.type='range';input.min=min;input.max=max;input.step=step;input.value=settings[key];
+ input.oninput=()=>{settings[key]=Number(input.value);out.textContent=Number(input.value).toFixed(2);if(key==='resolution'){SCALE=settings.resolution*Math.min(devicePixelRatio,2);rs();}};
+ row.append(out,input);controls.append(row);
+}
+const pause=document.createElement('button');
+function pauseLabel(){pause.textContent=settings.paused?'Resume motion':'Pause motion';pause.setAttribute('aria-pressed',String(settings.paused));}
+pauseLabel();pause.onclick=()=>{settings.paused=!settings.paused;pauseLabel();};controls.append(pause);document.body.append(controls);
+window.lab={getSettings:()=>({...settings,time:elapsed,camera:tgt.slice()})};
+addEventListener('pointercancel',()=>drag=null);
+</script></body></html>

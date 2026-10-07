@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Binary Stars — Twirling Lights</title><link rel="stylesheet" href="celestial.css"></head>
+<body><canvas aria-label="Binary Stars visualization"></canvas><div id="cap"><h1></h1><p></p></div><div id="ui" aria-label="Color and shape presets"></div>
+<script type="application/json" id="scene-config">{"title": "Binary Stars", "description": "Two glowing suns orbit through a twisting stream of luminous gas.", "own": true, "presets": [{"t": "Fire & ice", "c": [0.3, 0.35], "values": {"colorA": "#ff772b", "colorB": "#79cfff", "morph": 1}}, {"t": "Twin gold", "c": [0.3, 0.35], "values": {"colorA": "#ffc957", "colorB": "#fff3b8", "morph": 2}}, {"t": "Ultraviolet", "c": [0.3, 0.35], "values": {"colorA": "#a864ff", "colorB": "#ff81b6", "morph": 0}}]}</script>
+<script id="scene-settings" type="application/json">{}</script>
+<script type="x-shader" id="common">
+precision highp float;
+uniform vec2 R;uniform float T;uniform vec2 C;uniform float Exposure;uniform float Zoom;uniform float StarGain;uniform vec3 ColorA;uniform vec3 ColorB;uniform float Detail;uniform float Density;uniform float Morph;
+float h1(float n){return fract(sin(n)*43758.5453);}
+float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n3(vec3 x){vec3 p=floor(x),f=fract(x);f=f*f*(3.-2.*f);float n=p.x+p.y*57.+p.z*113.;
+ return mix(mix(mix(h1(n),h1(n+1.),f.x),mix(h1(n+57.),h1(n+58.),f.x),f.y),
+            mix(mix(h1(n+113.),h1(n+114.),f.x),mix(h1(n+170.),h1(n+171.),f.x),f.y),f.z);}
+float fbm(vec3 p){float s=0.,a=.5;for(int i=0;i<4;i++){s+=a*n3(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
+mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,s,-s,c);}
+void camera(float D,out vec3 ro,out vec3 rd){
+ vec2 uv=(gl_FragCoord.xy-.5*R)/min(R.x,R.y);
+ ro=D*vec3(sin(C.x)*cos(C.y),sin(C.y),-cos(C.x)*cos(C.y));
+ vec3 f=normalize(-ro),r=normalize(cross(vec3(0,1,0),f)),u=cross(f,r);
+ rd=normalize(f+.9/Zoom*(uv.x*r+uv.y*u));}
+vec3 stars(vec3 d){vec2 s=floor(vec2(atan(d.z,d.x),asin(clamp(d.y,-1.,1.)))*140.);return vec3(.9,.95,1.)*step(.996,h2(s))*h2(s+3.)*.8*StarGain;}
+float glow(vec3 ro,vec3 rd,vec3 c,float k){vec3 o=c-ro;float t=max(dot(o,rd),0.);float d=length(o-rd*t);return k/(d*d+k*.05);}
+vec3 tm(vec3 c){return pow(1.-exp(-c*1.3*Exposure),vec3(.85));}
+</script>
+<script type="x-shader" id="scene">
+vec3 sun(vec3 ro,vec3 rd,vec3 center,float radius,vec3 color){
+ vec3 o=ro-center;float b=dot(o,rd),disc=b*b-dot(o,o)+radius*radius;
+ float impact=length(cross(o,rd));float corona=exp(-max(impact-radius,0.)*3.)*.35*Density;
+ vec3 outColor=color*corona;
+ if(disc>0.&&-b-sqrt(disc)>0.){vec3 p=o+rd*(-b-sqrt(disc));vec3 n=normalize(p);
+ float texture=fbm(p*Detail*3.+vec3(0.,T*.08,0.));float limb=.35+.65*pow(max(dot(n,-rd),0.),.4);
+ outColor=color*(1.2+texture*1.8)*limb;}
+ return outColor;}
+void main(){vec3 ro,rd;camera(10.,ro,rd);float a=T*.12;
+ vec3 axis=vec3(cos(a),.25*sin(a),sin(a));float separation=1.7+Morph*.3;
+ vec3 col=stars(rd);col+=sun(ro,rd,axis*separation,1.,ColorA);col+=sun(ro,rd,-axis*separation,.65,ColorB);
+ // Emissive, twisting gas between the two bodies.
+ float b=dot(ro,rd),q=b*b-dot(ro,ro)+25.;
+ if(q>0.){float t=max(-b-sqrt(q),0.),dt=2.*sqrt(q)/48.;for(int i=0;i<48;i++){
+ vec3 p=ro+rd*t;float along=dot(p,axis);float radial=length(p-axis*along);
+ float stream=exp(-pow((radial-.18*sin(along*3.+T*.3))/.12,2.))*exp(-along*along/3.);
+ col+=mix(ColorA,ColorB,clamp(along/4.+.5,0.,1.))*stream*.09*Density*dt;t+=dt;}}
+ gl_FragColor=vec4(tm(col),1.);}
+</script>
+<script type="x-shader" id="vol">
+void main(){vec3 ro,rd;camera(DIST,ro,rd);vec3 col=vec3(0.);float tr=1.;
+ float b=dot(ro,rd),c=dot(ro,ro)-RB*RB,q=b*b-c;
+ if(q>0.){q=sqrt(q);float t0=max(-b-q,0.),t1=-b+q,dt=(t1-t0)/float(STEPS),t=t0+dt*h2(gl_FragCoord.xy);
+  for(int i=0;i<STEPS;i++){vec4 s=scene(ro+rd*t);col+=tr*s.rgb*dt;tr*=exp(-s.a*dt);if(tr<.02)break;t+=dt;}}
+ col+=tr*bg(ro,rd);
+ gl_FragColor=vec4(tm(col),1.);}
+</script>
+<script src="src/celestial.js"></script></body></html>

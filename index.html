@@ -1,51 +1,30 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Twirling Lights</title>
-  <meta name="description" content="A lab of gravitational attractors: particles of light spiralling into wormholes, yin-yang orbits, comets and explosions.">
-  <meta name="theme-color" content="#000000">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='.35' stop-color='%23ffc58a'/%3E%3Cstop offset='1' stop-color='%23b03fc9' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Ccircle cx='32' cy='32' r='26' fill='url(%23g)'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%23000'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="An exploration of cosmic beauty, from abstract particle dances to nebulae and the light around a black hole.">
+<meta name="theme-color" content="#08090e">
+<title>Twirling Lights — Cosmic beauty lab</title>
+<link rel="stylesheet" href="lab.css">
 </head>
 <body>
-  <canvas id="stage" aria-label="Particle attractor simulation"></canvas>
-
-  <div id="hud">
-    <div class="title">Twirling Lights</div>
-    <div id="hud-stats"></div>
-    <div class="hint">drag attract · shift-drag repel · ⌥-drag orbit view · scroll zoom · H hide</div>
-  </div>
-
-  <aside id="panel" class="panel">
-    <header class="panel-head">
-      <div class="brand">
-        <span class="mark" aria-hidden="true"></span>
-        <div>
-          <h1>Attractor lab</h1>
-          <p>Light, gravity, time</p>
-        </div>
-      </div>
-      <button class="icon-btn" type="button" data-action="hide" title="Hide everything (H)" aria-label="Hide panel">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </button>
-    </header>
-    <div class="presets" aria-label="Presets"></div>
-    <div class="scroll"></div>
-    <footer class="panel-foot">
-      <button type="button" data-action="random" title="Randomize everything (X)">Randomize <kbd>X</kbd></button>
-      <button type="button" data-action="snapshot" title="Save a PNG (S)">Snapshot <kbd>S</kbd></button>
-      <button type="button" data-action="link" title="Copy a link that recreates this scene">Copy link</button>
-      <button type="button" data-action="revert" title="Back to the preset's values">Revert</button>
-    </footer>
-  </aside>
-
-  <nav id="dock" aria-label="Events"></nav>
-  <button id="show-ui" type="button" title="Show controls (H)">Controls</button>
-  <div id="toast" role="status"></div>
-  <div id="error" hidden></div>
-
-  <script type="module" src="src/main.js"></script>
+<header class="lab-header">
+ <div class="identity"><strong>Twirling Lights <span> / cosmic beauty lab</span></strong><p>Light, gravity, imagination. From abstract dances to astronomical forms.</p></div>
+ <nav role="tablist" aria-label="Experiments">
+  <button id="tab-attractor" role="tab" aria-controls="scene-attractor" aria-selected="true" data-scene="attractor">Attractor <small>Abstract</small></button>
+  <button id="tab-cosmos" role="tab" aria-controls="scene-cosmos" aria-selected="false" tabindex="-1" data-scene="cosmos">Cosmos <small>Astronomical</small></button>
+  <button id="tab-accretion" role="tab" aria-controls="scene-accretion" aria-selected="false" tabindex="-1" data-scene="accretion">Accretion <small>Light & gravity</small></button>
+  <button id="tab-veil" role="tab" aria-controls="scene-veil" aria-selected="false" tabindex="-1" data-scene="veil">Veil Nebula <small>Ribbons & shells</small></button>
+  <button id="tab-bloom" role="tab" aria-controls="scene-bloom" aria-selected="false" tabindex="-1" data-scene="bloom">Stellar Bloom <small>Spiral petals</small></button>
+  <button id="tab-worlds" role="tab" aria-controls="scene-worlds" aria-selected="false" tabindex="-1" data-scene="worlds">Ring Worlds <small>Gas giants</small></button>
+  <button id="tab-binary" role="tab" aria-controls="scene-binary" aria-selected="false" tabindex="-1" data-scene="binary">Binary Stars <small>Orbiting suns</small></button>
+ </nav>
+ <div class="exports"><button id="copy">Copy code</button><button id="download">Export HTML ↓</button></div>
+</header>
+<main id="experiments"></main>
+<div id="status" role="status"></div>
+<dialog id="code-dialog"><form method="dialog"><strong>Standalone scene HTML</strong><button aria-label="Close">Close</button></form><p>Current settings are included. Copy this code into an .html file and open it in a browser.</p><textarea aria-label="Scene HTML code" spellcheck="false" readonly></textarea><button id="select-code">Select all code</button></dialog>
+<script type="module" src="src/lab.js"></script>
 </body>
 </html>

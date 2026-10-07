@@ -53,7 +53,7 @@ let captureNext = false;
 let simTime = 0;
 let dancePhase = 0;
 let hueTime = 0;
-let yaw = 0;
+let yaw = window.__LAB_INITIAL_YAW__ ?? 0;
 let pixelRatio = 1;
 
 const panel = new Panel({
@@ -190,12 +190,17 @@ function renderInputs(att, ev, dt, accumulate) {
 
 // ---------------------------------------------------------------- loop
 
+let active = true;
+window.addEventListener("message", e => {
+  if (e.source === parent && e.data?.type === "lab-active") { active = e.data.active; last = performance.now(); }
+});
 let last = performance.now();
 let fpsAvg = 60;
 let statsAt = 0;
 
 function frame(now) {
   requestAnimationFrame(frame);
+  if (!active || document.hidden) { last = now; return; }
   const dt = clamp((now - last) / 1000, 0, 0.05);
   last = now;
   resize();
@@ -339,7 +344,7 @@ function act(action) {
       break;
     case 'link':
       writeHash();
-      navigator.clipboard?.writeText(location.href).then(
+      navigator.clipboard?.writeText(window.parent !== window ? (() => { const url = new URL(window.parent.location.href); url.hash = location.hash; return url.href; })() : location.href).then(
         () => toast('Link copied'),
         () => toast('Copy failed — the address bar has the link'),
       );
@@ -359,7 +364,7 @@ function act(action) {
 
 function readHash() {
   const out = { preset: null, params: {}, seed: null };
-  const q = new URLSearchParams(location.hash.slice(1));
+  const q = new URLSearchParams((window.__LAB_INITIAL_HASH__ ?? location.hash).slice(1));
   if (PRESETS[q.get('preset')]) out.preset = q.get('preset');
   if (q.has('seed')) out.seed = Number(q.get('seed')) >>> 0;
   for (const [key, raw] of q) {
@@ -394,6 +399,7 @@ function writeHash() {
     if (v !== base[key]) q.set(key, typeof v === 'boolean' ? (v ? '1' : '0') : String(v));
   }
   history.replaceState(null, '', `#${q}`);
+  if (parent !== window) parent.postMessage({type:'lab-hash', hash:`#${q}`}, location.origin);
 }
 
 // ---------------------------------------------------------------- input
@@ -478,6 +484,6 @@ function fail(err) {
 }
 
 // Console access for experiments: lab.params.swirl = 1.2, lab.act('explode'), …
-window.lab = { params, act, applyPreset, director, engine };
+window.lab = { params, act, applyPreset, director, engine, getYaw: () => yaw, getHash: () => { writeHash(); return location.hash; } };
 
 requestAnimationFrame(frame);

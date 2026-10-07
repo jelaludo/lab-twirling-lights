@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cosmos</title>
+<style>
+:root{--bg:#000;--fg:#d6c9b8;--dim:#8a7d6e;--line:#4a4036;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
+html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;touch-action:none;color:var(--fg);font-family:Georgia,'Times New Roman',serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#cap{position:fixed;left:20px;top:calc(18px + env(safe-area-inset-top,0px));pointer-events:none;max-width:min(70ch,calc(100vw - 300px))}
+#cap h1{margin:0;font-weight:400;font-size:clamp(22px,5vw,38px);letter-spacing:.32em}
+#cap p{margin:.5em 0 0;font-size:13px;letter-spacing:.08em;color:var(--dim)}
+#ui{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+button{background:none;border:1px solid var(--line);color:var(--fg);padding:7px 11px;font:13px Georgia,serif;border-radius:2px}
+button[aria-pressed=true]{border-color:var(--fg)}
+button:focus-visible{outline:2px solid #e8a060}
+
+#tweaks{position:fixed;right:16px;top:16px;width:224px;max-height:65vh;overflow:auto;padding:14px;background:#101018df;border:1px solid #ffffff24;border-radius:12px;color:#ded7ce;font:12px/1.5 system-ui;touch-action:auto}
+#tweaks summary{cursor:pointer;font-weight:600}#tweaks p{color:#9c96a6}#tweaks label{display:block;margin:12px 0}#tweaks output{float:right;font-variant-numeric:tabular-nums}#tweaks input{display:block;width:100%;accent-color:#e8bc8f}#tweaks button{font:inherit}
+@media(max-width:640px){#tweaks{top:12px;right:12px;width:180px}#cap{top:68px;left:16px;right:16px;max-width:none}#cap h1{font-size:22px;letter-spacing:.1em}#cap p{max-width:40ch}#ui{background:#0009}}
+</style></head><body>
+<canvas></canvas>
+<div id="cap"><h1></h1><p></p></div>
+<div id="ui"></div>
+
+<script type="x-shader" id="common">
+precision highp float;
+uniform vec2 R;uniform float T;uniform vec2 C;uniform float Exposure;uniform float Zoom;uniform float StarGain;
+float h1(float n){return fract(sin(n)*43758.5453);}
+float h2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n3(vec3 x){vec3 p=floor(x),f=fract(x);f=f*f*(3.-2.*f);float n=p.x+p.y*57.+p.z*113.;
+ return mix(mix(mix(h1(n),h1(n+1.),f.x),mix(h1(n+57.),h1(n+58.),f.x),f.y),
+            mix(mix(h1(n+113.),h1(n+114.),f.x),mix(h1(n+170.),h1(n+171.),f.x),f.y),f.z);}
+float fbm(vec3 p){float s=0.,a=.5;for(int i=0;i<4;i++){s+=a*n3(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
+mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,s,-s,c);}
+void camera(float D,out vec3 ro,out vec3 rd){
+ vec2 uv=(gl_FragCoord.xy-.5*R)/min(R.x,R.y);
+ ro=D*vec3(sin(C.x)*cos(C.y),sin(C.y),-cos(C.x)*cos(C.y));
+ vec3 f=normalize(-ro),r=normalize(cross(vec3(0,1,0),f)),u=cross(f,r);
+ rd=normalize(f+.9/Zoom*(uv.x*r+uv.y*u));}
+vec3 stars(vec3 d){vec2 s=floor(vec2(atan(d.z,d.x),asin(clamp(d.y,-1.,1.)))*140.);return vec3(.9,.95,1.)*step(.996,h2(s))*h2(s+3.)*.8*StarGain;}
+float glow(vec3 ro,vec3 rd,vec3 c,float k){vec3 o=c-ro;float t=max(dot(o,rd),0.);float d=length(o-rd*t);return k/(d*d+k*.05);}
+vec3 tm(vec3 c){return pow(1.-exp(-c*1.3*Exposure),vec3(.85));}
+</script>
+
+<!-- generic emission/absorption volume integrator; scenes supply scene(), bg(), DIST, RB, STEPS -->
+<script type="x-shader" id="vol">
+void main(){vec3 ro,rd;camera(DIST,ro,rd);vec3 col=vec3(0.);float tr=1.;
+ float b=dot(ro,rd),c=dot(ro,ro)-RB*RB,q=b*b-c;
+ if(q>0.){q=sqrt(q);float t0=max(-b-q,0.),t1=-b+q,dt=(t1-t0)/float(STEPS),t=t0+dt*h2(gl_FragCoord.xy);
+  for(int i=0;i<STEPS;i++){vec4 s=scene(ro+rd*t);col+=tr*s.rgb*dt;tr*=exp(-s.a*dt);if(tr<.02)break;t+=dt;}}
+ col+=tr*bg(ro,rd);
+ gl_FragColor=vec4(tm(col),1.);}
+</script>
+
+<script type="x-shader" id="pillars">
+#define DIST 10.
+#define RB 5.5
+#define STEPS 44
+float cap(vec3 p,vec3 a,vec3 b,float ra,float rb){vec3 pa=p-a,ba=b-a;float k=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);return length(pa-ba*k)-mix(ra,rb,k);}
+float pil(vec3 p){float w=fbm(p*.7);p+=(w-.5)*vec3(1.4,.5,1.2);
+ float d=cap(p,vec3(-1.9,-5.,.3),vec3(-1.2,3.,0.),.9,.45);
+ d=min(d,cap(p,vec3(.2,-5.,-.2),vec3(.5,.6,.2),.7,.35));
+ return min(d,cap(p,vec3(2.2,-5.,.4),vec3(1.7,-.6,.3),.6,.3));}
+vec4 scene(vec3 p){
+ float g=fbm(p*.45+vec3(0,0,T*.01));
+ vec3 e=mix(vec3(.05,.22,.25),vec3(.35,.25,.1),smoothstep(-3.,3.,p.y))*g*g*.25;
+ float sd=pil(p);if(sd>.3)return vec4(e,0.);
+ float n=fbm(p*2.3+vec3(0,T*.03,0));
+ float d=smoothstep(.3,-.35,sd)*(.5+n);
+ vec3 L=normalize(vec3(.3,1.,-.4));
+ float sh=exp(-3.*smoothstep(.3,-.35,pil(p+L*.4)));          // self-shadow from the cluster above
+ float rim=exp(-sd*sd*30.)*sh;                               // ionization front
+ e+=d*vec3(.35,.17,.07)*(.15+.8*sh)+vec3(1.,.55,.2)*rim*(.4+n)*.9;
+ return vec4(e,d*3.);}
+vec3 bg(vec3 ro,vec3 rd){return mix(vec3(.04,.2,.24),vec3(.25,.14,.05),smoothstep(-.4,.4,rd.y+.1))*fbm(rd*4.)*.9+stars(rd)*.5;}
+</script>
+
+<script type="x-shader" id="butterfly">
+#define DIST 9.
+#define RB 4.6
+#define STEPS 48
+vec4 scene(vec3 p){
+ p.xy*=rot(.35);
+ float x=abs(p.x),rr=length(p.yz);
+ float n=fbm(p*1.6+vec3(T*.02,0,0));
+ float rl=1.3*pow(sin(clamp(x/4.2,0.,1.)*3.1416),.6)*(.8+.5*n);   // lobe profile, pinched waist
+ float sh=exp(-pow((rr-rl)/(.12+.25*rl),2.))*smoothstep(4.3,3.,x);
+ float fill=exp(-rr*rr/(rl*rl+.01))*smoothstep(4.,1.,x)*.25;
+ float f=n*n*2.;
+ vec3 e=(vec3(1.,.4,.12)*sh*f*1.4+vec3(.5,.7,1.)*fill*f)*exp(-x*.25)*1.6;
+ e+=vec3(.7,.85,1.)*exp(-dot(p,p)*3.)*1.5;
+ float tor=length(vec2(rr-.55,p.x*1.6));
+ return vec4(e,exp(-tor*tor/.06)*(.6+n)*8.+sh*.3);}            // dark dust torus at the waist
+vec3 bg(vec3 ro,vec3 rd){return stars(rd)+vec3(.02,.01,.03)*fbm(rd*3.);}
+</script>
+
+<script type="x-shader" id="ring">
+#define DIST 8.
+#define RB 3.6
+#define STEPS 44
+vec4 scene(vec3 p){
+ float n=fbm(p*2.+T*.02);
+ float rho=length(p.xy*vec2(1.,1.2));
+ float ring=exp(-pow((rho-1.5)/.42,2.))*exp(-p.z*p.z/1.4);       // barrel shell seen down its axis
+ float inner=exp(-rho*rho/1.2)*exp(-p.z*p.z/3.)*.25;
+ float halo=exp(-pow((rho-2.5)/.5,2.))*exp(-p.z*p.z)*.25*smoothstep(.4,.8,fbm(vec3(normalize(p.xy)*4.,rho*2.)));
+ vec3 c=mix(vec3(.2,.7,.75),vec3(1.,.35,.15),smoothstep(1.2,1.85,rho));
+ vec3 e=c*ring*(.4+n*n*2.)+vec3(.25,.45,.9)*inner*(.5+n)+vec3(.8,.25,.1)*halo;
+ return vec4(e*1.6,ring*n*1.2);}
+vec3 bg(vec3 ro,vec3 rd){return stars(rd)+vec3(1.,.95,.9)*glow(ro,rd,vec3(0),.0004);}
+</script>
+
+<script type="x-shader" id="pulsar">
+#define DIST 9.
+#define RB 5.
+#define STEPS 48
+vec4 scene(vec3 p){
+ float a=T*2.4;
+ vec3 m=normalize(vec3(sin(.5)*cos(a),cos(.5),sin(.5)*sin(a)));  // magnetic axis precessing about spin axis
+ float r=length(p);
+ float beam=exp(-(1.-abs(dot(p,m))/r)*60.)/(1.+r*r*.3)*3.;
+ float n=fbm(p*1.5+vec3(0,T*.1,0));
+ float rr=length(p.xz);
+ float tor=exp(-pow(rr-2.2,2.)/.25-p.y*p.y*4.)*(.3+n*n*2.);
+ float jet=exp(-rr*rr*14.)*smoothstep(4.,.5,abs(p.y))*(.3+n)*.8;
+ float neb=fbm(p*.8)*smoothstep(5.,1.,r)*.08;
+ return vec4(vec3(.6,.8,1.)*beam+vec3(.5,.6,1.)*tor+vec3(.6,.7,1.)*jet+vec3(.9,.4,.3)*neb*n,0.);}
+vec3 bg(vec3 ro,vec3 rd){return stars(rd)+vec3(.8,.9,1.)*glow(ro,rd,vec3(0),.0006);}
+</script>
+
+<script type="x-shader" id="oort">
+vec2 sph(vec3 ro,vec3 rd,float r){float b=dot(ro,rd),c=dot(ro,ro)-r*r,q=b*b-c;if(q<0.)return vec2(-1.);q=sqrt(q);return vec2(-b-q,-b+q);}
+float dots(vec3 p,float rad,float N,float seed,float t){
+ vec3 d=p/rad;
+ vec2 c=floor(vec2((atan(d.z,d.x)/6.2832+.5)*N,acos(clamp(d.y,-1.,1.))/3.1416*N*.5));
+ float k=h2(c+seed);if(k<.55)return 0.;
+ vec2 j=c+.25+.5*vec2(h2(c+seed+1.),h2(c+seed+2.));
+ float th=(j.x/N-.5)*6.2832,ph=j.y/(N*.5)*3.1416;
+ vec3 q=rad*vec3(sin(ph)*cos(th),cos(ph),sin(ph)*sin(th));
+ float w=.0022*t;return exp(-dot(p-q,p-q)/(w*w))*(.4+k);}
+void main(){vec3 ro,rd;camera(18.,ro,rd);
+ float a=T*.03;ro.xz*=rot(a);rd.xz*=rot(a);
+ vec3 col=stars(rd)*.6+vec3(1.,.85,.6)*glow(ro,rd,vec3(0),.002);
+ if(abs(rd.y)>1e-4){float t=-ro.y/rd.y;if(t>0.){vec3 p=ro+rd*t;float r=length(p.xz),w=.004*t;
+  for(int i=0;i<4;i++){float ri=.3+.22*float(i);col+=vec3(.5,.6,.8)*.35*exp(-pow((r-ri)/w,2.));}   // planetary orbits
+  vec2 c=floor(vec2((atan(p.z,p.x)/6.2832+.5)*260.,r*40.));                                      // Kuiper belt
+  if(r>1.15&&r<1.6&&h2(c)>.6){vec2 j=c+.25+.5*vec2(h2(c+1.),h2(c+2.));float th=(j.x/260.-.5)*6.2832;
+   vec2 q=j.y/40.*vec2(cos(th),sin(th));col+=vec3(.7,.8,1.)*exp(-dot(p.xz-q,p.xz-q)/(w*w*.4))*.8;}}}
+ for(int k=0;k<14;k++){float fk=float(k),rad=2.4+fk*.42,s=k<5?.45:1.;           // inner shells oblate (Hills cloud)
+  vec3 o=ro*vec3(1.,1./s,1.),d=rd*vec3(1.,1./s,1.);
+  float A=dot(d,d),B=dot(o,d),Q=B*B-A*(dot(o,o)-rad*rad);if(Q<0.)continue;Q=sqrt(Q);
+  float N=floor(60.+fk*8.);
+  for(int e=0;e<2;e++){float t=(-B+(e==0?-Q:Q))/A;if(t>0.)col+=vec3(.75,.85,1.)*dots(o+d*t,rad,N,fk*7.,t)*.7;}}
+ vec2 s8=sph(ro,rd,8.2),s2=sph(ro,rd,2.4);
+ float L=s8.x>0.?s8.y-s8.x:0.;if(s2.x>0.)L-=s2.y-s2.x;
+ col+=vec3(.08,.12,.2)*L*.02;
+ gl_FragColor=vec4(tm(col),1.);}
+</script>
+
+<script>addEventListener("error",e=>{const box=document.createElement("p");box.style="position:fixed;inset:30%;color:#fff;background:#211;padding:20px;z-index:10";box.textContent="Scene could not start: "+e.message;document.body.append(box);});</script>
+<script id="scene-settings" type="application/json">{}</script>
+<script>
+const S=[
+ {id:'pillars',t:'Pillars of Creation',s:'Eagle Nebula, M16, Serpens. Dust columns eroded by the cluster above.',c:[0,0]},
+ {id:'butterfly',t:'Butterfly Nebula',s:'NGC 6302, Scorpius. Bipolar planetary nebula with a dusty waist.',c:[0,0]},
+ {id:'ring',t:'Ring Nebula',s:'M57, Lyra. A barrel-shaped shell seen almost end-on.',c:[0,0]},
+ {id:'oort',t:'Oort Cloud',s:'Hypothesised icy shell, ~2,000 to 100,000 AU. Radii compressed.',c:[.4,.35],own:1},
+ {id:'pulsar',t:'Crab Pulsar',s:'Taurus. Spins ~30 times a second; slowed here.',c:[.3,.2]},
+];
+const $=id=>document.getElementById(id).textContent;
+const settings={speed:1,exposure:1,zoom:1,stars:1,resolution:.5,paused:matchMedia('(prefers-reduced-motion: reduce)').matches,...JSON.parse(document.getElementById('scene-settings').textContent)};
+let active=true,elapsed=settings.time??0,previous=null;
+addEventListener('message',e=>{if(e.source===parent&&e.data?.type==='lab-active'){active=e.data.active;previous=null;}});
+const c=document.querySelector('canvas'),g=c.getContext('webgl');
+if(!g)throw new Error('WebGL is unavailable. Please enable hardware acceleration.');
+const sh=(t,s)=>{const o=g.createShader(t);g.shaderSource(o,s);g.compileShader(o);if(!g.getShaderParameter(o,g.COMPILE_STATUS))throw g.getShaderInfoLog(o);return o};
+const VS=sh(g.VERTEX_SHADER,'attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}');
+g.bindBuffer(g.ARRAY_BUFFER,g.createBuffer());g.bufferData(g.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),g.STATIC_DRAW);
+g.enableVertexAttribArray(0);g.vertexAttribPointer(0,2,g.FLOAT,false,0,0);
+const P={};
+function prog(s){if(P[s.id])return P[s.id];
+ const pr=g.createProgram();g.attachShader(pr,VS);
+ g.attachShader(pr,sh(g.FRAGMENT_SHADER,$('common')+$(s.id)+(s.own?'':$('vol'))));
+ g.bindAttribLocation(pr,0,'p');g.linkProgram(pr);if(!g.getProgramParameter(pr,g.LINK_STATUS))throw new Error(g.getProgramInfoLog(pr));
+ return P[s.id]={pr,R:g.getUniformLocation(pr,'R'),T:g.getUniformLocation(pr,'T'),C:g.getUniformLocation(pr,'C'),Exposure:g.getUniformLocation(pr,'Exposure'),Zoom:g.getUniformLocation(pr,'Zoom'),StarGain:g.getUniformLocation(pr,'StarGain')};}
+let scale=settings.resolution*Math.min(devicePixelRatio,2);
+function rs(){c.width=innerWidth*scale|0;c.height=innerHeight*scale|0;g.viewport(0,0,c.width,c.height);}
+addEventListener('resize',rs);rs();
+let cur,cam=[0,0],tgt=[0,0],drag=null;
+const ui=document.getElementById('ui');
+S.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s.t;b.onclick=()=>pick(i);ui.appendChild(b);});
+function pick(i){settings.scene=i;cur=prog(S[i]);tgt=S[i].c.slice();
+ document.querySelector('#cap h1').textContent=S[i].t;document.querySelector('#cap p').textContent=S[i].s;
+ [...ui.children].forEach((b,j)=>b.setAttribute('aria-pressed',i===j));}
+pick(settings.scene??0);
+if(settings.camera)tgt=settings.camera.slice();
+c.onpointerdown=e=>drag=[e.clientX,e.clientY];
+addEventListener('pointerup',()=>drag=null);
+addEventListener('pointermove',e=>{if(!drag)return;tgt[0]+=(e.clientX-drag[0])*.005;
+ tgt[1]=Math.max(-1.4,Math.min(1.4,tgt[1]+(e.clientY-drag[1])*.005));drag=[e.clientX,e.clientY];});
+function frame(t){requestAnimationFrame(frame);if(!active||document.hidden){previous=null;return;}
+ const dt=previous===null?0:Math.min((t-previous)/1000,.05);previous=t;if(!settings.paused)elapsed+=dt*settings.speed;
+ cam=cam.map((x,i)=>x+(tgt[i]-x)*.08);
+ g.useProgram(cur.pr);g.uniform2f(cur.R,c.width,c.height);g.uniform1f(cur.T,20+elapsed);g.uniform2f(cur.C,cam[0],cam[1]);
+ g.uniform1f(cur.Exposure,settings.exposure);g.uniform1f(cur.Zoom,settings.zoom);g.uniform1f(cur.StarGain,settings.stars);
+ g.drawArrays(g.TRIANGLES,0,3);}
+requestAnimationFrame(frame);
+
+const controls=document.createElement('details');controls.id='tweaks';controls.open=innerWidth>640;
+controls.innerHTML='<summary>Scene controls</summary><p>Drag the scene to orbit the view.</p>';
+for(const [key,label,min,max,step] of [['speed','Time speed',0,3,.05],['exposure','Exposure',.2,3,.05],['zoom','Zoom',.5,2.5,.05],['stars','Starlight',0,3,.05],['resolution','Render quality',.2,1,.05]]){
+ const row=document.createElement('label');row.textContent=label;
+ const out=document.createElement('output');out.textContent=Number(settings[key]).toFixed(2);
+ const input=document.createElement('input');input.type='range';input.min=min;input.max=max;input.step=step;input.value=settings[key];
+ input.oninput=()=>{settings[key]=Number(input.value);out.textContent=Number(input.value).toFixed(2);if(key==='resolution'){scale=settings.resolution*Math.min(devicePixelRatio,2);rs();}};
+ row.append(out,input);controls.append(row);
+}
+const pause=document.createElement('button');
+function pauseLabel(){pause.textContent=settings.paused?'Resume motion':'Pause motion';pause.setAttribute('aria-pressed',String(settings.paused));}
+pauseLabel();pause.onclick=()=>{settings.paused=!settings.paused;pauseLabel();};controls.append(pause);document.body.append(controls);
+window.lab={getSettings:()=>({...settings,time:elapsed,camera:tgt.slice()})};
+addEventListener('pointercancel',()=>drag=null);
+</script></body></html>
